@@ -12,6 +12,7 @@ import numpy as np
 from typing import List, Union, Optional
 from dataclasses import dataclass
 from enum import Enum
+import time
 
 
 class ProblemType(Enum):
@@ -27,12 +28,30 @@ class ProblemType(Enum):
 #     longitude: float
 #     latitude: float
 
+
+class timed:
+    """Simple context manager to measure and print elapsed time for a step."""
+
+    def __init__(self, label: str):
+        self.label = label
+        self.start = 0.0
+
+    def __enter__(self):
+        self.start = time.perf_counter()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        elapsed = time.perf_counter() - self.start
+        print(f"[time] {self.label}: {elapsed:.3f}s")
+        return False
+
+
 def distance_city(city_1, city_2) -> float:
     """Calculate distance to another city using Haversine formula"""
     # Haversine formula for great-circle distance
     # REF_PI = 3.141592  # PI
     REF_EARTH_RADIUS = 6378.388  # Earth's radius in kilometers
-    
+
     lon1_rad = math.radians(city_1[1])
     lon2_rad = math.radians(city_2[1])
     lat1_rad = math.radians(city_1[2])
@@ -43,7 +62,7 @@ def distance_city(city_1, city_2) -> float:
     q3 = np.cos(lat1_rad + lat2_rad)
 
     distance = REF_EARTH_RADIUS * np.arccos(0.5 * ((1.0 + q1) * q2 -
-                                                    (1.0 - q1) * q3)) + 1.0
+                                                   (1.0 - q1) * q3)) + 1.0
     # Ensure the diagonal (distance between the same nodes) is 0
     return distance
 
@@ -67,30 +86,27 @@ class RealWorldTSPProblem:
 
     def _calculate_distance_matrix(self) -> List[List[float]]:
         """Calculate distance matrix between all cities"""
-        n = len(self.cities)
-        print(f"matrix is {n}X{n}")
-        print(f"cities are {self.cities[0]}")
-        distance_matrix = [[0.0 for _ in range(n)] for _ in range(n)]
+        with timed("build distance matrix"):
+            n = len(self.cities)
+            print(f"matrix is {n}X{n}")
+            print(f"cities are {self.cities[0]}")
+            distance_matrix = [[0.0 for _ in range(n)] for _ in range(n)]
 
-        # Only calculate upper triangle, then mirror for efficiency
-        for i in range(n):
-            for j in range(i + 1, n):
-                distance = distance_city(self.cities[i], self.cities[j])
-                distance_matrix[i][j] = distance
-                distance_matrix[j][i] = distance  # Symmetric matrix
-        return distance_matrix
+            # Only calculate upper triangle, then mirror for efficiency
+            for i in range(n):
+                for j in range(i + 1, n):
+                    distance = distance_city(self.cities[i], self.cities[j])
+                    distance_matrix[i][j] = distance
+                    distance_matrix[j][i] = distance  # Symmetric matrix
+            return distance_matrix
 
     def get_info(self) -> dict:
         """Get problem information"""
         return {
-            "Problem Type":
-            self.problem_type.value,
-            "Number of Cities":
-            self.n_nodes,
-            "Number of Salesmen":
-            self.n_salesmen,
-            "Depots":
-            self.depots,
+            "Problem Type": self.problem_type.value,
+            "Number of Cities": self.n_nodes,
+            "Number of Salesmen": self.n_salesmen,
+            "Depots": self.depots,
             # "City Range":
             # f"({min(c.longitude for c in self.cities):.2f}, {min(c.latitude for c in self.cities):.2f}) to ({max(c.longitude for c in self.cities):.2f}, {max(c.latitude for c in self.cities):.2f})"
         }
@@ -114,26 +130,26 @@ class RealWorldTSPProblem:
                                                           List[List[int]]],
                      total_cost: float) -> None:
         """Save TSP problem and solution to a text file"""
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.write("=== TSP Problem Results ===\n\n")
+        with timed(f"save results to {filename}"):
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write("=== TSP Problem Results ===\n\n")
 
-            # Problem information
-            f.write("PROBLEM INFORMATION:\n")
-            f.write(f"Problem Type: {self.problem_type.value}\n")
-            f.write(f"Number of Cities: {self.n_nodes}\n")
-            f.write(f"Number of Salesmen: {self.n_salesmen}\n")
-            f.write(f"Depots: {self.depots}\n")
+                # Problem information
+                f.write("PROBLEM INFORMATION:\n")
+                f.write(f"Problem Type: {self.problem_type.value}\n")
+                f.write(f"Number of Cities: {self.n_nodes}\n")
+                f.write(f"Number of Salesmen: {self.n_salesmen}\n")
+                f.write(f"Depots: {self.depots}\n")
 
-            # City coordinates
-            f.write(f"\nCITY COORDINATES:\n")
-            for city in self.cities:
-                f.write(
-                    f"City {city[0]}: ({city[1]:.6f}, {city[2]:.6f})\n"
-                )
+                # City coordinates
+                f.write(f"\nCITY COORDINATES:\n")
+                for city in self.cities:
+                    f.write(
+                        f"City {city[0]}: ({city[1]:.6f}, {city[2]:.6f})\n")
 
-            # Solution
-            f.write(f"\nSOLUTION:\n")
-            f.write(f"Total Distance: {total_cost:.2f} km\n")
+                # Solution
+                f.write(f"\nSOLUTION:\n")
+                f.write(f"Total Distance: {total_cost:.2f} km\n")
 
             if isinstance(solution, list) and len(solution) > 0 and isinstance(
                     solution[0], list):
@@ -155,10 +171,11 @@ class RealWorldTSPSolver:
             self,
             problem: RealWorldTSPProblem) -> Union[List[int], List[List[int]]]:
         """Solve TSP problem"""
-        if problem.problem_type == ProblemType.MULTI_TSP:
-            return self._solve_multi_tsp(problem)
-        else:
-            return self._solve_single_tsp(problem)
+        with timed("solve problem"):
+            if problem.problem_type == ProblemType.MULTI_TSP:
+                return self._solve_multi_tsp(problem)
+            else:
+                return self._solve_single_tsp(problem)
 
     def _solve_single_tsp(self, problem: RealWorldTSPProblem) -> List[int]:
         """Solve single TSP using nearest neighbor"""
@@ -251,25 +268,27 @@ def calculate_solution_cost(
         problem: RealWorldTSPProblem,
         solution: Union[List[int], List[List[int]]]) -> float:
     """Calculate the total distance of a solution"""
-    if isinstance(solution, list) and len(solution) > 0 and isinstance(
-            solution[0], list):
-        # Multi-salesman solution
-        total_cost = 0.0
-        for route in solution:
-            if len(route) > 1:
-                for i in range(len(route) - 1):
-                    total_cost += problem.distance_matrix[route[i]][route[i +
-                                                                          1]]
-        return total_cost
-    else:
-        # Single route solution
-        if len(solution) <= 1:
-            return 0.0
+    with timed("compute solution cost"):
+        if isinstance(solution, list) and len(solution) > 0 and isinstance(
+                solution[0], list):
+            # Multi-salesman solution
+            total_cost = 0.0
+            for route in solution:
+                if len(route) > 1:
+                    for i in range(len(route) - 1):
+                        total_cost += problem.distance_matrix[route[i]][route[
+                            i + 1]]
+            return total_cost
+        else:
+            # Single route solution
+            if len(solution) <= 1:
+                return 0.0
 
-        total_cost = 0.0
-        for i in range(len(solution) - 1):
-            total_cost += problem.distance_matrix[solution[i]][solution[i + 1]]
-        return total_cost
+            total_cost = 0.0
+            for i in range(len(solution) - 1):
+                total_cost += problem.distance_matrix[solution[i]][solution[i +
+                                                                            1]]
+            return total_cost
 
 
 class RealWorldDataLoader:
@@ -792,23 +811,23 @@ class RealWorldDataLoader:
             257408, 259256, 95839, 57959, 122599, 139938, 239965, 1827
         ]
 
-        cities = self._read_npz_file(file_path, cities_id)
+        with timed(f"load cities from {dataset_name}"):
+            cities = self._read_npz_file(file_path, cities_id)
         print(f"max_cities are {cities[-1]}")
         return cities
 
-    def _read_npz_file(self,
-                       file_path: str,
-                       cities_id: Optional[int] = None):
+    def _read_npz_file(self, file_path: str, cities_id: Optional[int] = None):
         """Read .npz file and extract city data"""
         # This is a simplified reader - in practice you might want to use numpy
         # For now, we'll create synthetic data based on the file size
         cities = []
-        city_data = np.load(file_path)
+        with timed(f"np.load {os.path.basename(file_path)}"):
+            city_data = np.load(file_path)
         print(f"city_data123123: {int(city_data['data'][0][0])}")
         cities = [[
-            int(city_data['data'][i][0]),
-            city_data['data'][i][1],
-            city_data['data'][i][2]] for i in cities_id]
+            int(city_data['data'][i][0]), city_data['data'][i][1],
+            city_data['data'][i][2]
+        ] for i in cities_id]
         # # Generate a larger dataset (simulate real-world datasets with many cities)
         # if max_cities is None:
         #     # Generate a large dataset (10,000-50,000 cities) for realistic sampling
@@ -891,7 +910,8 @@ def main():
     nodes1 = 4164
     try:
         # Generate metric TSP with random sample
-        problem = generator.generate_metric_tsp("USA_POI", nodes1)
+        with timed("generate problem"):
+            problem = generator.generate_metric_tsp("USA_POI", nodes1)
         print(
             f"Generated problem with {problem.n_nodes} randomly sampled cities"
         )
