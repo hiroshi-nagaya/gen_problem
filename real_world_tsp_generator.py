@@ -20,34 +20,32 @@ class ProblemType(Enum):
     MULTI_TSP = "Multi-Salesman TSP"
 
 
-@dataclass
-class CityData:
-    """Represents a city with coordinates"""
-    id: int
-    longitude: float
-    latitude: float
+# @dataclass
+# class CityData:
+#     """Represents a city with coordinates"""
+#     id: int
+#     longitude: float
+#     latitude: float
 
-    def distance_to(self, other: 'CityData') -> float:
-        """Calculate distance to another city using Haversine formula"""
-        # Haversine formula for great-circle distance
-        # REF_PI = 3.141592  # PI
-        REF_EARTH_RADIUS = 6378.388  # Earth's radius in kilometers
+def distance_city(city_1, city_2) -> float:
+    """Calculate distance to another city using Haversine formula"""
+    # Haversine formula for great-circle distance
+    # REF_PI = 3.141592  # PI
+    REF_EARTH_RADIUS = 6378.388  # Earth's radius in kilometers
+    
+    lon1_rad = math.radians(city_1[1])
+    lon2_rad = math.radians(city_2[1])
+    lat1_rad = math.radians(city_1[2])
+    lat2_rad = math.radians(city_2[2])
 
-        lat1_rad = math.radians(self.latitude)
-        lat2_rad = math.radians(other.latitude)
-        lon1_rad = math.radians(self.longitude)
-        lon2_rad = math.radians(other.longitude)
+    q1 = np.cos(lon1_rad - lon2_rad)
+    q2 = np.cos(lat1_rad - lat2_rad)
+    q3 = np.cos(lat1_rad + lat2_rad)
 
-        q1 = np.cos(lon1_rad - lon2_rad)
-        q2 = np.cos(lat1_rad - lat2_rad)
-        q3 = np.cos(lat1_rad + lat2_rad)
-
-        distance = REF_EARTH_RADIUS * np.arccos(0.5 * ((1.0 + q1) * q2 -
-                                                       (1.0 - q1) * q3)) + 1.0
-        # Ensure the diagonal (distance between the same nodes) is 0
-        np.fill_diagonal(distance, 0)
-
-        return distance
+    distance = REF_EARTH_RADIUS * np.arccos(0.5 * ((1.0 + q1) * q2 -
+                                                    (1.0 - q1) * q3)) + 1.0
+    # Ensure the diagonal (distance between the same nodes) is 0
+    return distance
 
 
 class RealWorldTSPProblem:
@@ -55,7 +53,7 @@ class RealWorldTSPProblem:
 
     def __init__(self,
                  problem_type: ProblemType,
-                 cities: List[CityData],
+                 cities,
                  n_salesmen: int = 1,
                  depots: Optional[List[int]] = None):
         self.problem_type = problem_type
@@ -64,21 +62,22 @@ class RealWorldTSPProblem:
         self.n_salesmen = n_salesmen
         self.depots = depots or [0] * n_salesmen
         # Create city lookup dictionary for O(1) access
-        self.city_lookup = {city.id: city for city in cities}
+        self.city_lookup = {city[0]: city for city in cities}
         self.distance_matrix = self._calculate_distance_matrix()
 
     def _calculate_distance_matrix(self) -> List[List[float]]:
         """Calculate distance matrix between all cities"""
         n = len(self.cities)
+        print(f"matrix is {n}X{n}")
+        print(f"cities are {self.cities[0]}")
         distance_matrix = [[0.0 for _ in range(n)] for _ in range(n)]
 
         # Only calculate upper triangle, then mirror for efficiency
         for i in range(n):
             for j in range(i + 1, n):
-                distance = self.cities[i].distance_to(self.cities[j])
+                distance = distance_city(self.cities[i], self.cities[j])
                 distance_matrix[i][j] = distance
                 distance_matrix[j][i] = distance  # Symmetric matrix
-
         return distance_matrix
 
     def get_info(self) -> dict:
@@ -92,22 +91,22 @@ class RealWorldTSPProblem:
             self.n_salesmen,
             "Depots":
             self.depots,
-            "City Range":
-            f"({min(c.longitude for c in self.cities):.2f}, {min(c.latitude for c in self.cities):.2f}) to ({max(c.longitude for c in self.cities):.2f}, {max(c.latitude for c in self.cities):.2f})"
+            # "City Range":
+            # f"({min(c.longitude for c in self.cities):.2f}, {min(c.latitude for c in self.cities):.2f}) to ({max(c.longitude for c in self.cities):.2f}, {max(c.latitude for c in self.cities):.2f})"
         }
 
-    def get_random_cities(self, n: int) -> List[CityData]:
+    def get_random_cities(self, n: int):
         """Get n random cities from the dataset"""
         if n > self.n_nodes:
             n = self.n_nodes
         return random.sample(self.cities, n)
 
-    def display_city_numbers(self, cities: List[CityData]) -> None:
+    def display_city_numbers(self, cities):
         """Display city numbers and their coordinates"""
-        cities_id = [city.id for city in cities]
+        cities_id = [city[0] for city in cities]
         print(f"Selected {len(cities)} random cities: {cities_id}")
 
-    def get_city_by_number(self, city_number: int) -> Optional[CityData]:
+    def get_city_by_number(self, city_number: int):
         """Get a specific city by its number in the dataset"""
         return self.city_lookup.get(city_number)
 
@@ -129,7 +128,7 @@ class RealWorldTSPProblem:
             f.write(f"\nCITY COORDINATES:\n")
             for city in self.cities:
                 f.write(
-                    f"City {city.id}: ({city.longitude:.6f}, {city.latitude:.6f})\n"
+                    f"City {city[0]}: ({city[1]:.6f}, {city[2]:.6f})\n"
                 )
 
             # Solution
@@ -147,19 +146,6 @@ class RealWorldTSPProblem:
             else:
                 # Single route solution
                 f.write(f"Route: {' -> '.join(map(str, solution))}\n")
-
-            # Distance matrix (optional - only for small problems)
-            if self.n_nodes <= 20:
-                f.write(f"\nDISTANCE MATRIX (km):\n")
-                f.write("     ")
-                for j in range(self.n_nodes):
-                    f.write(f"{j:8d}")
-                f.write("\n")
-                for i in range(self.n_nodes):
-                    f.write(f"{i:3d}: ")
-                    for j in range(self.n_nodes):
-                        f.write(f"{self.distance_matrix[i][j]:8.2f}")
-                    f.write("\n")
 
 
 class RealWorldTSPSolver:
@@ -305,9 +291,7 @@ class RealWorldDataLoader:
 
         return datasets
 
-    def load_cities(self,
-                    dataset_name: str,
-                    max_cities: Optional[int] = None) -> List[CityData]:
+    def load_cities(self, dataset_name: str):
         """Load cities from a dataset"""
         file_path = os.path.join(self.data_folder, f"{dataset_name}.npz")
 
@@ -809,23 +793,22 @@ class RealWorldDataLoader:
         ]
 
         cities = self._read_npz_file(file_path, cities_id)
-        print(f"max_cities are {len(cities_id)}")
+        print(f"max_cities are {cities[-1]}")
         return cities
 
     def _read_npz_file(self,
                        file_path: str,
-                       cities_id: Optional[int] = None) -> List[CityData]:
+                       cities_id: Optional[int] = None):
         """Read .npz file and extract city data"""
         # This is a simplified reader - in practice you might want to use numpy
         # For now, we'll create synthetic data based on the file size
         cities = []
         city_data = np.load(file_path)
         print(f"city_data123123: {int(city_data['data'][0][0])}")
-        for i in cities_id:
-            cities.append(
-                CityData(id=int(city_data['data'][i][0]),
-                         longitude=city_data['data'][i][1],
-                         latitude=city_data['data'][i][2]))
+        cities = [[
+            int(city_data['data'][i][0]),
+            city_data['data'][i][1],
+            city_data['data'][i][2]] for i in cities_id]
         # # Generate a larger dataset (simulate real-world datasets with many cities)
         # if max_cities is None:
         #     # Generate a large dataset (10,000-50,000 cities) for realistic sampling
@@ -867,13 +850,14 @@ class RealWorldProblemGenerator:
     def generate_metric_tsp(self, dataset_name: str,
                             n_cities: int) -> RealWorldTSPProblem:
         """Generate metric TSP from real-world data"""
-        cities = self.data_loader.load_cities(dataset_name, n_cities)
+        cities = self.data_loader.load_cities(dataset_name)
+        print(f"before generate cities:{cities[-1]}")
         return RealWorldTSPProblem(ProblemType.METRIC_TSP, cities)
 
     def generate_multi_tsp(self, dataset_name: str, n_cities: int,
                            n_salesmen: int) -> RealWorldTSPProblem:
         """Generate multi-salesman TSP from real-world data"""
-        cities = self.data_loader.load_cities(dataset_name, n_cities)
+        cities = self.data_loader.load_cities(dataset_name)
         depots = random.sample(range(n_cities), min(n_salesmen, n_cities))
         return RealWorldTSPProblem(ProblemType.MULTI_TSP, cities, n_salesmen,
                                    depots)
